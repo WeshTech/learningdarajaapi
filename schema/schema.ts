@@ -6,9 +6,7 @@ export const PhoneNumberSchema = z.string()
   .length(10);
 
 // Amount schema
-export const AmountSchema = z.number({
-    invalid_type_error: "Amount must be a number.",
+export const AmountSchema = z.string({
 })
   .min(1, "Amount must be at least kes 1.")
   .max(249999, "Amount must be less than 250,000.")
-  .int("Amount must be numbers.");

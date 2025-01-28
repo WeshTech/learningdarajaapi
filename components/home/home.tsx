@@ -7,34 +7,43 @@ import { useForm, SubmitHandler } from "react-hook-form";
 import { z } from "zod";
 import FormError from "./form-error";
 import FormSuccess from "./form-success";
+import { pay } from "@/actions/payment";
+
+// Import the server action to initiate the STK push
 
 type FormData = z.infer<typeof PaymentSchema>;
 
 const HomePage = () => {
-    const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState<string | null>(null);
-    // const [loading, startTransition] = useTransition<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
     formState: { errors },
-    reset, // Add reset function
   } = useForm<FormData>({
     resolver: zodResolver(PaymentSchema),
     defaultValues: {
       phoneNumber: "",
-      amount: 1,
+      amount: "",
     },
   });
 
   const onSubmit: SubmitHandler<FormData> = async (data) => {
-    console.log(data);
-    // Reset form after successful submission (optional)
+    setError(null); // Clear previous errors
+    setSuccess(null); // Clear previous success messages
 
-    setError("A fucking error occurred");
-    setSuccess("Payment was successful");
+    try {
+      // Call the server action to initiate STK Push
+      const response = await pay(data.phoneNumber, Number(data.amount));
 
-    reset(); 
+      // Handle success
+      setSuccess("Payment initiated successfully!");
+      console.log(response);
+    } catch (err) {
+      // Handle error
+      setError("Failed to initiate payment. Please try again.");
+      console.error(err);
+    }
   };
 
   return (
@@ -46,7 +55,7 @@ const HomePage = () => {
         <form onSubmit={handleSubmit(onSubmit)} className="w-full space-y-4">
           <div className="flex flex-col gap-4 items-start w-full">
             {/* Phone number input */}
-            <label htmlFor="phonenumber" className="">Phone Number</label>
+            <label htmlFor="phoneNumber" className="">Phone Number</label>
             <div className="flex flex-col w-2/3">
               <input
                 type="text"
@@ -66,7 +75,7 @@ const HomePage = () => {
               <input
                 type="text"
                 {...register("amount", { required: "Amount is required" })}
-                placeholder="Enter your phone number"
+                placeholder="Enter amount"
                 className="px-4 py-2 text-md border rounded-lg shadow-sm focus:ring-2 focus:ring-amber-600 focus:outline-none focus:border-transparent border-gray-300 placeholder-gray-400"
               />
               {/* Display error message below the input */}
@@ -77,8 +86,8 @@ const HomePage = () => {
           </div>
 
           {/* form error and form success */}
-              {error && <FormError message={error} />}
-              {success && <FormSuccess message={success} />}
+          {error && <FormError message={error} />}
+          {success && <FormSuccess message={success} />}
 
           {/* Centering the button */}
           <div className="flex justify-center">
