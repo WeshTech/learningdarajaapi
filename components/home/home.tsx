@@ -39,14 +39,15 @@ const HomePage = () => {
         const response = await axios.post("/api/payment", data); // Send request
         const responseData = response.data; // Extract response data
 
+        // Handle response feedback
         if (responseData.success) {
-          setSuccess("✅ Payment request sent. Please check your phone!");
-        } else {
-          setError(`❌ Error: ${responseData.error}`);
+          setSuccess(responseData?.success); // Display message from backend
+        } else if (responseData?.error) {
+          setError(`❌ Error: ${responseData.error}`); // Handle errors
         }
       } catch (error) {
-        console.error("❌ Payment request failed:", error);
-        setError("❌ Failed to process payment. Please try again.");
+        console.error("Payment request failed:", error);
+        setError("Failed to process payment. Please try again.");
       }
     });
   };

@@ -3,25 +3,49 @@
 import { NextResponse } from "next/server";
 import z from "zod";
 import { PaymentSchema } from "@/schema";
-import {
-  formatPhoneNumber,
-  getAccessToken,
-  initializeStkPush,
-} from "@/lib/mpesa";
+import { formatPhoneNumber, getAccessToken, initializeStkPush } from "@/lib/mpesa";
 
 type PaymentData = z.infer<typeof PaymentSchema>;
 
-
-interface StkPushResponse {
+interface SuccessPaymentData {
   MerchantRequestID: string;
   CheckoutRequestID: string;
-  ResponseCode: string;
-  ResponseDescription: string;
-  CustomerMessage: string;
+  Amount: number;
+  MpesaReceiptNumber: string;
+  PhoneNumber: string;
 }
 
+interface FailurePaymentData {
+  MerchantRequestID: string;
+  CheckoutRequestID: string;
+  ResultDesc: string;
+}
+
+interface MpesaCallbackResponse {
+  Body: {
+    stkCallback: {
+      MerchantRequestID: string;
+      CheckoutRequestID: string;
+      ResultCode: number;
+      ResultDesc: string;
+      CallbackMetadata: {
+        Item: {
+          Name: string;
+          Value?: string | number;
+        }[];
+      };
+    };
+  };
+}
+
+interface CallbackResponse {
+  error?: string;
+  success?: string;
+  data?: SuccessPaymentData | FailurePaymentData;
+}
+
+
 export async function POST(req: Request) {
-  try {
     const contentType = req.headers.get("content-type");
 
     if (contentType?.includes("application/json")) {
@@ -30,81 +54,108 @@ export async function POST(req: Request) {
     }
 
     return await handleMpesaCallback(req);
-  } catch (error) {
-    console.error("❗ Server error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
-  }
 }
 
 async function handleStkPush(data: PaymentData) {
   const validatedData = PaymentSchema.safeParse(data);
   if (!validatedData.success) {
-    return NextResponse.json({ error: "Invalid input data" }, { status: 400 });
+    const errorMessages = validatedData.error.errors.map((error) => error.message).join(", ")
+    return NextResponse.json({ error: `Validation failed: ${errorMessages}` }, { status: 400 });
   }
 
   const { phoneNumber, amount } = validatedData.data;
 
-  try {
     const accessToken = await getAccessToken();
-    
     const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-    const response: StkPushResponse = await initializeStkPush(
-      formattedPhoneNumber,
-      amount,
-      accessToken
-    );
+    const response = await initializeStkPush(formattedPhoneNumber, amount, accessToken);
+
+    // console.log("📤 STK Push response:", response);
 
     if (!response || response.ResponseCode !== "0") {
+      // console.error("❗ STK Push failed:", response?.ResponseDescription); // Log failure details
       return NextResponse.json(
-        { error: "STK Push failed", details: response.ResponseDescription },
+        { error: "Payment request failed!", details: response?.ResponseDescription },
         { status: 500 }
       );
     }
 
     return NextResponse.json(
-      { success: "Payment request sent. Check your phone!" },
+      { success: "We have sent the payment confirmation." }, 
       { status: 200 }
     );
-  } catch (error) {
-    console.error("❗ STK Push Error:", error);
-    return NextResponse.json({ error: "Failed to initiate payment" }, { status: 500 });
-  }
 }
 
 async function handleMpesaCallback(req: Request) {
-  try {
-    const body = await req.json();
-    console.log("📩 M-Pesa Callback Response:", JSON.stringify(body, null, 2));
 
-    const callbackData = body?.Body?.stkCallback;
-    if (!callbackData) {
-      return NextResponse.json({ error: "Invalid callback data" }, { status: 400 });
-    }
+  const body: MpesaCallbackResponse = await req.json();
+  console.log("📩 M-Pesa Callback Response:", JSON.stringify(body, null, 2));
 
-    const { ResultCode, ResultDesc, CallbackMetadata } = callbackData;
-    const transactionInfo: Record<string, string | number> = {};
+  const callbackData = body?.Body?.stkCallback;
 
-    CallbackMetadata?.Item?.forEach((item: { Name: string; Value?: string | number }) => {
-      if (item.Name) transactionInfo[item.Name] = item.Value ?? "";
-    });
+  if (!callbackData) {
+    // console.error("❗ Invalid callback data:", body); // Log the invalid callback data
+    return NextResponse.json(
+      { error: "Something went wrong."}, // Error format
+      { status: 400 }
+    );
+  }
 
-    const paymentStatus =
-      ResultCode === 0 ? "SUCCESS" :
-      ResultCode === 1032 ? "CANCELLED" : "FAILED";
+  const { ResultCode, ResultDesc, CallbackMetadata, MerchantRequestID, CheckoutRequestID } = callbackData;
 
-    console.log("✅ Payment Status:", paymentStatus);
+  const transactionInfo: Record<string, string | number> = {};
+
+  CallbackMetadata?.Item?.forEach((item) => {
+    if (item.Name) transactionInfo[item.Name] = item.Value ?? "";
+  });
+
+  const response: CallbackResponse = { error: "Payment failed" };
+
+  if (ResultCode === 0) {
+    response.data = {
+      MerchantRequestID,
+      CheckoutRequestID,
+      Amount: transactionInfo["Amount"] as number,
+      MpesaReceiptNumber: transactionInfo["MpesaReceiptNumber"] as string,
+      PhoneNumber: transactionInfo["PhoneNumber"] as string,
+    };
+
+    // Log the payment details after a successful transaction
+    console.log("✅ Payment Status: Payment successful");
+    console.log("💰 Amount:", transactionInfo["Amount"]);
+    console.log("📞 Phone Number:", transactionInfo["PhoneNumber"]);
+    console.log("🧾 Mpesa Receipt Number:", transactionInfo["MpesaReceiptNumber"]);
+
+    return NextResponse.json( 
+      { success: "We have received your payment.", data: response.data }, // Include the data in the response
+      { status: 200 }
+    );
+    
+  } else if (ResultCode === 1032) {
+    return NextResponse.json( 
+      { error: "Oops! You have canceled the transaction" }, 
+      { status: 400 }
+    );
+
+  } else {
+    response.error = `Payment failed: ${ResultDesc}`;
+    response.data = {
+      MerchantRequestID,
+      CheckoutRequestID,
+      ResultDesc,
+    };
+
+    console.log("❌ Payment Failed:", ResultDesc);
     console.log("📞 Phone:", transactionInfo["PhoneNumber"]);
     console.log("💰 Amount:", transactionInfo["Amount"]);
     console.log("🧾 Receipt:", transactionInfo["MpesaReceiptNumber"]);
 
     return NextResponse.json(
-      paymentStatus === "SUCCESS"
-        ? { success: "Payment received successfully" }
-        : { error: "Payment failed", reason: ResultDesc },
-      { status: paymentStatus === "SUCCESS" ? 200 : 400 }
+      { error: "Something went wrong!" }, 
+      { status: 400 }
     );
-  } catch (error) {
-    console.error("❗ Callback Handling Error:", error);
-    return NextResponse.json({ error: "Error processing callback" }, { status: 500 });
   }
 }
+
+
+
+
