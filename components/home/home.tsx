@@ -8,7 +8,7 @@ import { z } from "zod";
 import FormError from "./form-error";
 import FormSuccess from "./form-success";
 import { Loader } from "lucide-react";
-import axios from "axios";
+import { handlePayment } from "@/actions/payment";
 
 type FormData = z.infer<typeof PaymentSchema>;
 
@@ -35,22 +35,17 @@ const HomePage = () => {
     setSuccess(null);
 
     startTransition(async () => {
-      try {
-        const response = await axios.post("/api/payment", data); // Send request
-        const responseData = response.data; // Extract response data
-
-        // Handle response feedback
-        if (responseData.success) {
-          setSuccess(responseData?.success); // Display message from backend
-        } else if (responseData?.error) {
-          setError(`❌ Error: ${responseData.error}`); // Handle errors
-        }
-      } catch (error) {
-        console.error("Payment request failed:", error);
-        setError("Failed to process payment. Please try again.");
-      }
+      handlePayment(data)
+        .then((data) => {
+          if (data?.error){
+            setError(data?.error)
+          }
+          if (data?.success) {
+            setSuccess(data?.success)
+          }
+        })
     });
-  };
+  }
 
   return (
     <div className="flex justify-center p-2 sm:p-4 md:p-6 lg:p-8 xl:p-10 2xl:p-12 bg-white">
