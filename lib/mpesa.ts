@@ -47,6 +47,8 @@ export async function initializeStkPush(
   const timestamp = new Date().toISOString().replace(/[-T:.Z]/g, "").slice(0, 14);
   const password = generatePassword(SHORTCODE, PASSKEY, timestamp);
 
+  console.log({CALLBACK_URL: CALLBACK_URL});
+
   const requestData = {
     BusinessShortCode: SHORTCODE,
     Password: password,

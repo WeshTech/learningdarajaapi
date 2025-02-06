@@ -2,20 +2,22 @@
 
 import { PaymentSchema } from "@/schema";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { z } from "zod";
 import FormError from "./form-error";
 import FormSuccess from "./form-success";
 import { Loader } from "lucide-react";
 import { handlePayment } from "@/actions/payment";
+import useMpesaStore from "@/store/mpesaStore"; // Import Zustand store
 
 type FormData = z.infer<typeof PaymentSchema>;
 
 const HomePage = () => {
+  const { status, message, setTransactionMessage } = useMpesaStore(); // Zustand state
+  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   const {
     register,
@@ -29,23 +31,43 @@ const HomePage = () => {
     },
   });
 
+  useEffect(() => {
+    // Check the global state when the component is loaded
+    if (status === "failed") {
+      // Update error from Zustand state and clear local success
+      setError(message);
+      setSuccess(null);
+    } else if (status === "success") {
+      // Update success from Zustand state and clear local error
+      setSuccess(message);
+      setError(null);
+    }
+  }, [status, message]); // Update when Zustand state changes
+
   const onSubmit: SubmitHandler<FormData> = async (data: FormData) => {
     console.log("📤 Sending payment request:", data);
     setError(null);
     setSuccess(null);
 
-    startTransition(async () => {
+    startTransition(() => {
+      // Handle payment action and show feedback
       handlePayment(data)
-        .then((data) => {
-          if (data?.error){
-            setError(data?.error)
+        .then((response) => {
+          if (response?.error) {
+            setError(response?.error);
+            setTransactionMessage("failed", response?.error); // Update global state with failure
           }
-          if (data?.success) {
-            setSuccess(data?.success)
+          if (response?.success) {
+            setSuccess(response?.success);
+            setTransactionMessage("success", response?.success); // Update global state with success
           }
         })
+        .catch((err) => {
+          console.error("Payment Error:", err);
+          setError("An error occurred while processing your payment.");
+        });
     });
-  }
+  };
 
   return (
     <div className="flex justify-center p-2 sm:p-4 md:p-6 lg:p-8 xl:p-10 2xl:p-12 bg-white">
