@@ -11,21 +11,22 @@ export async function handlePayment(data: PaymentData) {
 
     if (!validatedData.success) {
         const errorMessages = validatedData.error.errors.map((error) => error.message).join(", ");
-        return { error: `Validation failed: ${errorMessages}` }
+        return { status: "failed", message: `Validation failed: ${errorMessages}` };
     }
 
     const { phoneNumber, amount } = validatedData.data;
     const formattedPhoneNumber = formatPhoneNumber(phoneNumber);
-    const accessToken = await getAccessToken()
+    const accessToken = await getAccessToken();
 
     if (!accessToken) {
-        return { error: "Something went wrong!" }
+        return { status: "failed", message: "Something went wrong!" };
     }
 
-    const response = await initializeStkPush(formattedPhoneNumber, amount, accessToken)
-    if (!response || response.ResponseCode !== "0"){
-        return { error: "Payment confirmation request failed. Please try again." }
+    const response = await initializeStkPush(formattedPhoneNumber, amount, accessToken);
+
+    if (!response || response.ResponseCode !== "0") {
+        return { status: "failed", message: "Payment confirmation request failed. Please try again." };
     }
 
-    return { success: "Payment confirmation sent to your phone." }
+    return { status: "success", message: `Payment request sent to ${phoneNumber}.` };
 }

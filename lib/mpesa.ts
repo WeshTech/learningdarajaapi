@@ -21,7 +21,9 @@ export const getAccessToken = async (): Promise<string> => {
 
   const response = await axios.get(
     "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
-    { headers: { Authorization: `Basic ${auth}` } }
+    { 
+      headers: { Authorization: `Basic ${auth}` } ,
+    }
   );
 
   return response.data.access_token;
